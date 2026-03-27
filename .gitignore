@@ -1,0 +1,53 @@
+# Environment Variables
+.env
+.env.*
+!.env.example
+*.env
+
+# Python Backend
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual Environments
+.env/
+.venv/
+venv/
+env/
+ENV/
+
+# Jupyter Notebooks
+.ipynb_checkpoints
+
+# Python Tools
+.pytest_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+.uvicorn_error.txt
+mongo_test.log
+
+# Flutter & Dart Frontend
+**/build/
+**/.dart_tool/
+.packages
+.pub-cache/
+.pub/
+*.log
+*.sqlite
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Other API / Credential files
+*-service-account.json
+credentials.json

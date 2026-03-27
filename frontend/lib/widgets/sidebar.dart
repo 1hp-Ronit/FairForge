@@ -124,6 +124,13 @@ class Sidebar extends StatelessWidget {
                     label: 'AUDIT HISTORY',
                     route: '/history',
                   ),
+                  const SizedBox(height: 16),
+                  _buildNavLink(
+                     context: context,
+                     icon: Icons.assessment_outlined,
+                     label: 'AUDIT RESULTS',
+                     route: '/results',
+                  ),
                   const SizedBox(height: 24),
                   Container(
                     height: 1,
