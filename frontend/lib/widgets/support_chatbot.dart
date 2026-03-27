@@ -23,8 +23,8 @@ class _SupportChatbotState extends State<SupportChatbot> {
   final ScrollController _scrollController = ScrollController();
   List<Map<String, String>> _messages = [];
   bool _isLoading = false;
-  late final GenerativeModel _model;
-  late final ChatSession _chatSession;
+  late GenerativeModel _model;
+  late ChatSession _chatSession;
 
   @override
   void initState() {
@@ -49,7 +49,7 @@ class _SupportChatbotState extends State<SupportChatbot> {
     }
 
     _model = GenerativeModel(
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.5-flash',
       apiKey: apiKey,
       systemInstruction: Content.system('You are the helpful technical support chatbot for "FairForge". FairForge is a Flutter+FastAPI Hackathon project built to evaluate Machine Learning algorithms for bias. Features include checking Demographic Parity, Equalized Odds, mitigating proxies, and viewing Audit History. Provide concise, friendly answers regarding these topics or ML Fairness in general.'),
     );
@@ -88,12 +88,43 @@ class _SupportChatbotState extends State<SupportChatbot> {
         });
       });
     } catch (e) {
-      setState(() {
-        _messages.add({
-          'role': 'model',
-          'text': "Oops! An error occurred: $e",
+      // Fallback mechanism: if the specific region/key does not support the primary model on v1beta API.
+      if (e.toString().contains('v1beta') || e.toString().contains('not found')) {
+        try {
+          final apiKey = dotenv.env['GEMINI_API_KEY']!;
+          // Re-initialize with the secondary model discovered for this key
+          final fallbackModel = GenerativeModel(
+            model: 'gemini-3.1-flash-live-preview',
+            apiKey: apiKey,
+          );
+          _chatSession = fallbackModel.startChat();
+          // Pre-seed context since systemInstruction is removed
+          await _chatSession.sendMessage(Content.text('System Context: You are the helpful technical support chatbot for "FairForge". FairForge evaluates ML algorithms for bias (Demographic Parity, Equalized Odds). Acknowledge concisely.'));
+          
+          // Retry actual message
+          final response = await _chatSession.sendMessage(Content.text(text));
+          setState(() {
+            _messages.add({
+              'role': 'model',
+              'text': response.text ?? "Sorry, I couldn't process that.",
+            });
+          });
+        } catch (fallbackError) {
+          setState(() {
+            _messages.add({
+              'role': 'model',
+              'text': "Oops! Fallback failed: $fallbackError",
+            });
+          });
+        }
+      } else {
+        setState(() {
+          _messages.add({
+            'role': 'model',
+            'text': "Oops! An error occurred: $e",
+          });
         });
-      });
+      }
     } finally {
       setState(() {
         _isLoading = false;

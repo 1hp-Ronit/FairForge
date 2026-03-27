@@ -7,8 +7,8 @@ class GeminiService:
         self.api_key = os.getenv("GEMINI_API_KEY")
         if self.api_key:
             genai.configure(api_key=self.api_key)
-            # Use gemini-1.5-flash as the fast/default option for JSON extraction
-            self.model = genai.GenerativeModel('models/gemini-1.5-flash')
+            # Use the model allowed by the current key environment
+            self.model = genai.GenerativeModel('models/gemini-2.5-flash')
         else:
             print("Warning: GEMINI_API_KEY missing.")
             self.model = None

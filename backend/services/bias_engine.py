@@ -13,15 +13,43 @@ class BiasEngine:
     Assumes standard ML columns: 'target' and 'prediction' if available.
     If 'prediction' is missing, evaluates 'target' purely on demographic distributions.
     """
-    
+    def _infer_columns(self, df: pd.DataFrame):
+        """Intellectually discover common target and prediction columns if literal 'target' or 'prediction' are missing."""
+        target_candidates = ['target', 'label', 'outcome', 'hired', 'approved', 'status', 'y']
+        pred_candidates = ['prediction', 'pred', 'score', 'probability', 'prob', 'y_pred']
+        
+        if 'target' not in df.columns:
+            for c in target_candidates:
+                col_match = [col for col in df.columns if col.lower() == c]
+                if col_match:
+                    df['target'] = df[col_match[0]]
+                    break
+                    
+        if 'prediction' not in df.columns:
+            for c in pred_candidates:
+                col_match = [col for col in df.columns if col.lower() == c]
+                if col_match:
+                    col_name = col_match[0]
+                    # If continuous probability between 0 and 1, binarize it for fairness metrics
+                    if pd.api.types.is_float_dtype(df[col_name]):
+                        df['prediction'] = (df[col_name] >= 0.5).astype(int)
+                    else:
+                        df['prediction'] = df[col_name].astype(int)
+                    break
+
     def compute_metrics(self, df: pd.DataFrame, protected_attributes: list) -> dict:
+        self._infer_columns(df)
+        
         # Default mock target/prediction if absent (to prevent crash in missing datasets)
         if 'target' not in df.columns:
+            # Deterministic pseudo-random generation to keep metrics stable across re-runs
+            np.random.seed(len(df) + 42)
             df['target'] = np.random.randint(0, 2, size=len(df))
+            np.random.seed(None)
         if 'prediction' not in df.columns:
             # Simulate a 85% accurate model with some bias
             df['prediction'] = df['target'].copy()
-            noise_idx = df.sample(frac=0.15).index
+            noise_idx = df.sample(frac=0.15, random_state=123).index
             df.loc[noise_idx, 'prediction'] = 1 - df.loc[noise_idx, 'target']
             
         y_true = df['target']

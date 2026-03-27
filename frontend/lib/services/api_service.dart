@@ -123,9 +123,14 @@ class ApiService {
     }
   }
 
-  /// Returns the literal URL needed to fetch the PDF. This can be passed to url_launcher.
+  /// Returns the literal URL needed to fetch the PDF.
   static String getExportPdfUrl(String auditId) {
     return '$baseUrl/audit/$auditId/export';
+  }
+
+  /// Returns the URL to download the mitigated CSV.
+  static String getDownloadMitigatedUrl(String auditId) {
+    return '$baseUrl/audit/$auditId/download';
   }
 
   /// Helper to decode utf8 properly

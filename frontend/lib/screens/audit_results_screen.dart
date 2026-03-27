@@ -90,6 +90,10 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
                             children: [
                               _buildHeader(),
                               const SizedBox(height: 40),
+                              if (_auditData?['parent_audit_id'] != null) ...[
+                                _buildBeforeAfterComparison(),
+                                const SizedBox(height: 32),
+                              ],
                               _buildOverallScore(),
                               const SizedBox(height: 32),
                               _buildMetricCards(),
@@ -101,6 +105,10 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
                               _buildMitigations(),
                               const SizedBox(height: 32),
                               _buildActionButtons(),
+                              if (_auditData?['mitigated_file_path'] != null) ...[
+                                const SizedBox(height: 16),
+                                _buildDownloadMitigatedButton(),
+                              ],
                               const SizedBox(height: 48),
                             ],
                           ),
@@ -138,12 +146,15 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
   }
 
   Widget _buildOverallScore() {
-    final scoreNum = _auditData?['overall_score'] ?? 0.74;
+    final metrics = _auditData?['metrics'] ?? {};
+    final scoreNum = _auditData?['overall_score'] 
+        ?? (metrics is Map ? metrics['overall_score'] : null) 
+        ?? 0.74;
     final riskLevel = _auditData?['risk_level']?.toString().toUpperCase() ?? 'MEDIUM';
     
     Color riskColor = _primaryGreen;
-    if (riskLevel == 'HIGH') riskColor = const Color(0xFFFFB4AB); // _error design token
-    if (riskLevel == 'MEDIUM') riskColor = _warning;
+    if (riskLevel == 'HIGH') riskColor = const Color(0xFFFFB4AB);
+    if (riskLevel == 'MEDIUM' || riskLevel == 'MED') riskColor = _warning;
 
     return _card(
       padding: const EdgeInsets.all(32),
@@ -188,9 +199,19 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
 
   Widget _buildMetricCards() {
     final metrics = _auditData?['metrics'] ?? {};
-    final dp = metrics['demographic_parity'] ?? {'score': 0.63, 'status': 'FAIL'};
-    final di = metrics['disparate_impact'] ?? {'score': 0.71, 'status': 'WARN'};
-    final eo = metrics['equalized_odds'] ?? {'score': 0.88, 'status': 'PASS'};
+    
+    Map<String, dynamic> parseMetric(dynamic raw) {
+      if (raw is Map<String, dynamic>) return raw;
+      final score = double.tryParse(raw?.toString() ?? '0.0') ?? 0.0;
+      String status = 'FAIL';
+      if (score >= 0.80) status = 'PASS';
+      else if (score >= 0.60) status = 'WARN';
+      return {'score': score.toStringAsFixed(3), 'status': status};
+    }
+
+    final dp = parseMetric(metrics['demographic_parity'] ?? 0.63);
+    final di = parseMetric(metrics['disparate_impact'] ?? 0.71);
+    final eo = parseMetric(metrics['equalized_odds'] ?? 0.88);
 
     Color getStatusColor(String status) {
       if (status == 'FAIL') return const Color(0xFFFFB4AB);
@@ -252,22 +273,41 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
 
   Widget _buildBarChart() {
     final metrics = _auditData?['metrics'] ?? {};
-    final di = metrics['disparate_impact'] ?? {};
-    final variance = di['variance']?.toString() ?? '32%';
-    
-    final selRates = di['selection_rates'] as Map<String, dynamic>? ?? {
-      'Majority Group': {'rate': 0.78},
-      'Minority Group': {'rate': 0.46},
-    };
 
-    final majKey = selRates.keys.firstWhere((k) => k.toLowerCase().contains('maj'), orElse: () => selRates.keys.first);
-    final minKey = selRates.keys.firstWhere((k) => k != majKey, orElse: () => selRates.keys.last);
+    // The backend returns disparate_impact as a plain float (e.g. 0.429).
+    // Derive bar-chart values from the score itself.
+    final diRaw = metrics['disparate_impact'];
+    double diScore;
+    Map<String, dynamic>? selRates;
+    String variance;
 
-    final majRateStr = selRates[majKey]?['rate']?.toString() ?? '0.78';
-    final minRateStr = selRates[minKey]?['rate']?.toString() ?? '0.46';
-    
-    final majRate = double.tryParse(majRateStr) ?? 0.78;
-    final minRate = double.tryParse(minRateStr) ?? 0.46;
+    if (diRaw is Map<String, dynamic>) {
+      diScore = double.tryParse(diRaw['score']?.toString() ?? '0.5') ?? 0.5;
+      variance = diRaw['variance']?.toString() ?? '${((1 - diScore) * 100).toStringAsFixed(0)}%';
+      selRates = diRaw['selection_rates'] as Map<String, dynamic>?;
+    } else {
+      diScore = double.tryParse(diRaw?.toString() ?? '0.5') ?? 0.5;
+      variance = '${((1 - diScore) * 100).toStringAsFixed(0)}%';
+      selRates = null;
+    }
+
+    // Default group rates derived from the DI ratio
+    final double majRate;
+    final double minRate;
+    String majKey;
+    String minKey;
+
+    if (selRates != null && selRates.isNotEmpty) {
+      majKey = selRates.keys.firstWhere((k) => k.toLowerCase().contains('maj'), orElse: () => selRates!.keys.first);
+      minKey = selRates.keys.firstWhere((k) => k != majKey, orElse: () => selRates!.keys.last);
+      majRate = double.tryParse(selRates[majKey]?['rate']?.toString() ?? '0.78') ?? 0.78;
+      minRate = double.tryParse(selRates[minKey]?['rate']?.toString() ?? '0.46') ?? 0.46;
+    } else {
+      majKey = 'Majority Group';
+      minKey = 'Minority Group';
+      majRate = 0.78;
+      minRate = majRate * diScore; // approximate from DI ratio
+    }
 
     final majPct = '${(majRate * 100).toStringAsFixed(0)}%';
     final minPct = '${(minRate * 100).toStringAsFixed(0)}%';
@@ -613,13 +653,43 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
                       if (_mitigationChecked[1]) appliedList.add('Adversarial Debiasing');
                       if (_mitigationChecked[2]) appliedList.add('Equalized Odds Post-hoc');
 
-                      await ApiService.applyMitigations(
+                      final result = await ApiService.applyMitigations(
                         auditId: widget.auditId!,
                         mitigations: appliedList,
                       );
                       
-                      // Refresh the data
-                      _fetchData();
+                      if (!mounted) return;
+
+                      // Show score delta snackbar
+                      final prevScore = result['previous_score']?.toString() ?? '?';
+                      final newScore = result['new_score']?.toString() ?? '?';
+                      final delta = result['delta']?.toString() ?? '?';
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Score improved: $prevScore → $newScore (Δ $delta)',
+                            style: GoogleFonts.dmMono(),
+                          ),
+                          backgroundColor: const Color(0xFF1B1C1C),
+                          behavior: SnackBarBehavior.floating,
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+
+                      // Navigate to the new audit results
+                      final newAudit = result['audit'] as Map<String, dynamic>?;
+                      if (newAudit != null) {
+                        final newAuditId = newAudit['audit_id']?.toString();
+                        if (newAuditId != null) {
+                          // Update in-place with the new audit data
+                          setState(() {
+                            _auditData = newAudit;
+                            _mitigationChecked[0] = false;
+                            _mitigationChecked[1] = false;
+                            _mitigationChecked[2] = false;
+                          });
+                        }
+                      }
                     } catch (e) {
                       if (!mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -687,6 +757,146 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildBeforeAfterComparison() {
+    final metrics = _auditData?['metrics'] ?? {};
+    final newScore = metrics is Map ? (metrics['overall_score'] ?? 0.0) : 0.0;
+    final mitigations = _auditData?['mitigations_applied'] as List? ?? [];
+
+    return _card(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(
+                  color: _primaryGreen,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Text(
+                'MITIGATION RE-RUN RESULTS',
+                style: GoogleFonts.dmMono(
+                  color: _primaryGreen,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 11,
+                  letterSpacing: 1,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      'CURRENT SCORE',
+                      style: GoogleFonts.dmSans(
+                        color: _mutedLabel,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 10,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      newScore is double ? newScore.toStringAsFixed(3) : newScore.toString(),
+                      style: GoogleFonts.dmMono(
+                        color: _primaryGreen,
+                        fontWeight: FontWeight.w500,
+                        fontSize: 32,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          if (mitigations.isNotEmpty)
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              children: mitigations
+                  .map<Widget>((m) => Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: _primaryGreen.withValues(alpha: 0.08),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(color: _primaryGreen.withValues(alpha: 0.2)),
+                        ),
+                        child: Text(
+                          m.toString(),
+                          style: GoogleFonts.dmMono(
+                            color: _primaryGreen,
+                            fontSize: 10,
+                          ),
+                        ),
+                      ))
+                  .toList(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDownloadMitigatedButton() {
+    final auditId = _auditData?['audit_id']?.toString() ?? widget.auditId;
+    return SizedBox(
+      width: double.infinity,
+      height: 48,
+      child: OutlinedButton.icon(
+        onPressed: () async {
+          if (auditId == null) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Downloading mitigated dataset...',
+                style: GoogleFonts.dmSans(),
+              ),
+              backgroundColor: const Color(0xFF1B1C1C),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          final urlString = ApiService.getDownloadMitigatedUrl(auditId);
+          final url = Uri.parse(urlString);
+          if (await canLaunchUrl(url)) {
+            await launchUrl(url);
+          } else {
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Could not download mitigated dataset.')),
+              );
+            }
+          }
+        },
+        icon: const Icon(Icons.download_rounded, size: 20),
+        label: Text(
+          'Download Mitigated Dataset',
+          style: GoogleFonts.dmSans(
+            fontWeight: FontWeight.w700,
+            fontSize: 14,
+            letterSpacing: -0.3,
+          ),
+        ),
+        style: OutlinedButton.styleFrom(
+          side: const BorderSide(color: _primaryGreen),
+          foregroundColor: _primaryGreen,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+      ),
     );
   }
 

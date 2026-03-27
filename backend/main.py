@@ -1,13 +1,13 @@
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from services.storage_service import storage_service
 from dotenv import load_dotenv
 import os
 
-from routes import audit, history
-
-# Load environment variables
+# Load environment variables FIRST before internal modules
 load_dotenv()
+
+from services.storage_service import storage_service
+from routes import audit, history
 
 app = FastAPI(
     title="FairForge ML Bias Audit Backend",

@@ -23,6 +23,7 @@ class AuditModel(BaseModel):
     status: str = "FAILED" # Default to FAILED, mark COMPLETE on success
     parent_audit_id: Optional[str] = None
     gcs_file_path: str
+    mitigated_file_path: Optional[str] = None
 
     class Config:
         populate_by_name = True
