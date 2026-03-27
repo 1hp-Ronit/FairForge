@@ -204,8 +204,9 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
       if (raw is Map<String, dynamic>) return raw;
       final score = double.tryParse(raw?.toString() ?? '0.0') ?? 0.0;
       String status = 'FAIL';
-      if (score >= 0.80) status = 'PASS';
-      else if (score >= 0.60) status = 'WARN';
+      if (score >= 0.80) {
+        status = 'PASS';
+      } else if (score >= 0.60) status = 'WARN';
       return {'score': score.toStringAsFixed(3), 'status': status};
     }
 

@@ -21,7 +21,7 @@ class _SupportChatbotState extends State<SupportChatbot> {
 
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  List<Map<String, String>> _messages = [];
+  final List<Map<String, String>> _messages = [];
   bool _isLoading = false;
   late GenerativeModel _model;
   late ChatSession _chatSession;
