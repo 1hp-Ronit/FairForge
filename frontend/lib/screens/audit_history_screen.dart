@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
 import '../widgets/sidebar.dart';
+import '../services/api_service.dart';
 
 class AuditHistoryScreen extends StatefulWidget {
   const AuditHistoryScreen({super.key});
@@ -32,77 +33,48 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
   final List<String> _domains = ['All', 'Hiring', 'Lending', 'Healthcare', 'Insurance'];
   final List<String> _risks = ['All', 'HIGH', 'MED', 'LOW'];
 
-  final List<Map<String, dynamic>> _audits = [
-    {
-      'name': 'hiring_model_v3_prod',
-      'domain': 'Hiring',
-      'timestamp': '2023-11-24T14:22:01Z',
-      'risk': 'HIGH',
-      'score': 0.63,
-    },
-    {
-      'name': 'lending_risk_assessment',
-      'domain': 'Lending',
-      'timestamp': '2023-11-22T09:15:33Z',
-      'risk': 'MED',
-      'score': 0.71,
-    },
-    {
-      'name': 'patient_triage_classifier',
-      'domain': 'Healthcare',
-      'timestamp': '2023-11-20T11:08:12Z',
-      'risk': 'LOW',
-      'score': 0.88,
-    },
-    {
-      'name': 'insurance_pricing_v2',
-      'domain': 'Insurance',
-      'timestamp': '2023-11-18T16:42:05Z',
-      'risk': 'HIGH',
-      'score': 0.58,
-    },
-    {
-      'name': 'credit_scoring_model',
-      'domain': 'Lending',
-      'timestamp': '2023-11-15T08:30:22Z',
-      'risk': 'MED',
-      'score': 0.74,
-    },
-    {
-      'name': 'resume_screening_bert',
-      'domain': 'Hiring',
-      'timestamp': '2023-11-12T13:55:41Z',
-      'risk': 'HIGH',
-      'score': 0.52,
-    },
-    {
-      'name': 'readmission_predictor',
-      'domain': 'Healthcare',
-      'timestamp': '2023-11-10T10:20:18Z',
-      'risk': 'LOW',
-      'score': 0.91,
-    },
-    {
-      'name': 'salary_prediction_xgb',
-      'domain': 'Hiring',
-      'timestamp': '2023-11-08T15:12:33Z',
-      'risk': 'MED',
-      'score': 0.69,
-    },
-  ];
+  int _currentPage = 1;
+  int _totalPages = 1;
+  int _totalAudits = 0;
+  List<dynamic> _audits = [];
+  bool _isLoading = true;
+  String? _errorMessage;
 
-  List<Map<String, dynamic>> get _filteredAudits {
-    return _audits.where((audit) {
-      final matchesSearch = _searchQuery.isEmpty ||
-          audit['name'].toString().toLowerCase().contains(
-                _searchQuery.toLowerCase(),
-              );
-      final matchesDomain =
-          _selectedDomain == 'All' || audit['domain'] == _selectedDomain;
-      final matchesRisk =
-          _selectedRisk == 'All' || audit['risk'] == _selectedRisk;
-      return matchesSearch && matchesDomain && matchesRisk;
-    }).toList();
+  @override
+  void initState() {
+    super.initState();
+    _fetchHistory();
+  }
+
+  Future<void> _fetchHistory() async {
+    setState(() => _isLoading = true);
+    try {
+      final res = await ApiService.getAuditHistory(
+        page: _currentPage,
+        perPage: 10,
+        domain: _selectedDomain,
+        riskLevel: _selectedRisk,
+        search: _searchQuery,
+      );
+      setState(() {
+        _audits = res['data'] ?? [];
+        _totalAudits = res['total'] ?? 0;
+        _totalPages = (res['total'] / 10).ceil();
+        if (_totalPages < 1) _totalPages = 1;
+        _isLoading = false;
+        _errorMessage = null;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  void _onFilterChanged() {
+    _currentPage = 1;
+    _fetchHistory();
   }
 
   @override
@@ -158,11 +130,7 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
   Widget _buildStatPills() {
     return Row(
       children: [
-        _statChip('14 Audits'),
-        const SizedBox(width: 12),
-        _statChip('Avg Score 0.71'),
-        const SizedBox(width: 12),
-        _statChip('Top Bias: Gender'),
+        _statChip('$_totalAudits Audits Total'),
       ],
     );
   }
@@ -198,15 +166,16 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
               border: Border.all(color: _borderColor),
             ),
             child: TextField(
-              onChanged: (value) {
-                setState(() => _searchQuery = value);
-              },
-              style: GoogleFonts.dmSans(
-                color: _primaryText,
-                fontSize: 13,
-              ),
-              decoration: InputDecoration(
-                hintText: 'Search audits...',
+                onSubmitted: (value) {
+                  setState(() => _searchQuery = value);
+                  _onFilterChanged();
+                },
+                style: GoogleFonts.dmSans(
+                  color: _primaryText,
+                  fontSize: 13,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Search audits... (Press Enter)',
                 hintStyle: GoogleFonts.dmSans(
                   color: _mutedLabel,
                   fontSize: 13,
@@ -228,7 +197,10 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
           label: 'Domain',
           value: _selectedDomain,
           items: _domains,
-          onChanged: (v) => setState(() => _selectedDomain = v!),
+          onChanged: (v) {
+            setState(() => _selectedDomain = v!);
+            _onFilterChanged();
+          },
         ),
         const SizedBox(width: 12),
         // Risk dropdown
@@ -236,7 +208,10 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
           label: 'Risk',
           value: _selectedRisk,
           items: _risks,
-          onChanged: (v) => setState(() => _selectedRisk = v!),
+          onChanged: (v) {
+            setState(() => _selectedRisk = v!);
+            _onFilterChanged();
+          },
         ),
       ],
     );
@@ -281,8 +256,21 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
   }
 
   Widget _buildAuditList() {
-    final audits = _filteredAudits;
-    if (audits.isEmpty) {
+    if (_isLoading) {
+      return const Padding(
+        padding: EdgeInsets.all(48),
+        child: Center(child: CircularProgressIndicator(color: _primaryGreen)),
+      );
+    }
+    if (_errorMessage != null) {
+      return Padding(
+        padding: const EdgeInsets.all(48),
+        child: Center(
+          child: Text('Error: $_errorMessage', style: const TextStyle(color: Colors.red)),
+        ),
+      );
+    }
+    if (_audits.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(48),
         alignment: Alignment.center,
@@ -296,28 +284,21 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
       );
     }
     return Column(
-      children: audits
+      children: _audits
           .map((audit) => Padding(
                 padding: const EdgeInsets.only(bottom: 8),
-                child: _auditCard(audit),
+                child: _auditCard(audit as Map<String, dynamic>),
               ))
           .toList(),
     );
   }
 
   Widget _auditCard(Map<String, dynamic> audit) {
-    final risk = audit['risk'] as String;
-    Color riskColor;
-    switch (risk) {
-      case 'HIGH':
-        riskColor = _error;
-        break;
-      case 'MED':
-        riskColor = _warning;
-        break;
-      default:
-        riskColor = _primaryGreen;
-    }
+    // Determine risk level correctly
+    final riskLevel = (audit['risk_level'] ?? 'LOW').toString().toUpperCase();
+    Color riskColor = _primaryGreen;
+    if (riskLevel == 'HIGH') riskColor = _error;
+    if (riskLevel == 'MEDIUM') riskColor = _warning;
 
     final domain = audit['domain'] as String;
 
@@ -343,7 +324,7 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      audit['name'] as String,
+                      audit['filename']?.toString() ?? 'Unnamed Audit',
                       style: GoogleFonts.dmSans(
                         color: _primaryText,
                         fontWeight: FontWeight.w600,
@@ -376,7 +357,9 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
               Expanded(
                 flex: 2,
                 child: Text(
-                  (audit['timestamp'] as String).substring(0, 10),
+                  audit['timestamp'] != null 
+                    ? audit['timestamp'].toString().substring(0, 10)
+                    : 'N/A',
                   style: GoogleFonts.dmMono(
                     color: _mutedLabel,
                     fontSize: 11,
@@ -399,7 +382,7 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
                       ),
                     ),
                     child: Text(
-                      risk,
+                      riskLevel,
                       style: GoogleFonts.dmSans(
                         color: riskColor,
                         fontWeight: FontWeight.w700,
@@ -410,7 +393,7 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
                   ),
                   const SizedBox(width: 16),
                   TextButton(
-                    onPressed: () => context.go('/results'),
+                    onPressed: () => context.go('/results', extra: audit['id'] ?? audit['_id']),
                     style: TextButton.styleFrom(
                       foregroundColor: _primaryGreen,
                       padding: const EdgeInsets.symmetric(
@@ -436,27 +419,33 @@ class _AuditHistoryScreenState extends State<AuditHistoryScreen> {
   }
 
   Widget _buildPagination() {
+    if (_totalPages <= 1) return const SizedBox.shrink();
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _paginationButton('←', false),
+        if (_currentPage > 1) 
+          _paginationButton('←', false, () {
+            setState(() => _currentPage--);
+            _fetchHistory();
+          }),
         const SizedBox(width: 8),
-        _paginationButton('1', true),
+        _paginationButton('Page $_currentPage of $_totalPages', true, () {}),
         const SizedBox(width: 8),
-        _paginationButton('2', false),
-        const SizedBox(width: 8),
-        _paginationButton('3', false),
-        const SizedBox(width: 8),
-        _paginationButton('→', false),
+        if (_currentPage < _totalPages)
+          _paginationButton('→', false, () {
+            setState(() => _currentPage++);
+            _fetchHistory();
+          }),
       ],
     );
   }
 
-  Widget _paginationButton(String label, bool isActive) {
+  Widget _paginationButton(String label, bool isActive, VoidCallback onTap) {
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
-        onTap: () {},
+        onTap: onTap,
         child: Container(
           width: 36,
           height: 36,

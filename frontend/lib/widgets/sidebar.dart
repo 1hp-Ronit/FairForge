@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:go_router/go_router.dart';
+import 'support_chatbot.dart';
 
 class Sidebar extends StatelessWidget {
   final String currentRoute;
@@ -124,13 +125,6 @@ class Sidebar extends StatelessWidget {
                     label: 'AUDIT HISTORY',
                     route: '/history',
                   ),
-                  const SizedBox(height: 16),
-                  _buildNavLink(
-                     context: context,
-                     icon: Icons.assessment_outlined,
-                     label: 'AUDIT RESULTS',
-                     route: '/results',
-                  ),
                   const SizedBox(height: 24),
                   Container(
                     height: 1,
@@ -140,11 +134,18 @@ class Sidebar extends StatelessWidget {
                   _buildFooterLink(
                     icon: Icons.menu_book_outlined,
                     label: 'DOCUMENTATION',
+                    onTap: () {},
                   ),
                   const SizedBox(height: 16),
                   _buildFooterLink(
                     icon: Icons.support_agent_outlined,
                     label: 'SUPPORT',
+                    onTap: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => const SupportChatbot(),
+                      );
+                    },
                   ),
                   const SizedBox(height: 32),
                 ],
@@ -229,24 +230,31 @@ class Sidebar extends StatelessWidget {
   Widget _buildFooterLink({
     required IconData icon,
     required String label,
+    VoidCallback? onTap,
   }) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: Row(
-        children: [
-          Icon(icon, color: _mutedText, size: 18),
-          const SizedBox(width: 12),
-          Text(
-            label,
-            style: GoogleFonts.spaceGrotesk(
-              color: _mutedText,
-              fontWeight: FontWeight.w700,
-              fontSize: 10,
-              letterSpacing: 3,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      hoverColor: const Color(0xFF292A2A),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Icon(icon, color: _mutedText, size: 18),
+            const SizedBox(width: 12),
+            Text(
+              label,
+              style: GoogleFonts.spaceGrotesk(
+                color: _mutedText,
+                fontWeight: FontWeight.w700,
+                fontSize: 10,
+                letterSpacing: 3,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
+

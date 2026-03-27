@@ -5,7 +5,11 @@ import 'screens/new_audit_screen.dart';
 import 'screens/audit_results_screen.dart';
 import 'screens/audit_history_screen.dart';
 
-void main() {
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await dotenv.load(fileName: ".env");
   runApp(const FairForgeApp());
 }
 
@@ -17,7 +21,10 @@ final GoRouter _router = GoRouter(
     ),
     GoRoute(
       path: '/results',
-      builder: (context, state) => const AuditResultsScreen(),
+      builder: (context, state) {
+        final auditId = state.extra as String?;
+        return AuditResultsScreen(auditId: auditId);
+      },
     ),
     GoRoute(
       path: '/history',

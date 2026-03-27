@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../widgets/sidebar.dart';
+import '../services/api_service.dart';
 
 class AuditResultsScreen extends StatefulWidget {
-  const AuditResultsScreen({super.key});
+  final String? auditId;
+
+  const AuditResultsScreen({super.key, this.auditId});
 
   @override
   State<AuditResultsScreen> createState() => _AuditResultsScreenState();
@@ -28,6 +32,39 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
 
   bool get _anyMitigationChecked => _mitigationChecked.any((v) => v);
 
+  Map<String, dynamic>? _auditData;
+  bool _isLoading = true;
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchData();
+  }
+
+  Future<void> _fetchData() async {
+    if (widget.auditId == null) {
+      setState(() {
+        _errorMessage = 'No Audit ID provided.';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    try {
+      final data = await ApiService.getAuditDetails(widget.auditId!);
+      setState(() {
+        _auditData = data;
+        _isLoading = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -44,25 +81,29 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
               padding: const EdgeInsets.all(48),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 960),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildHeader(),
-                    const SizedBox(height: 40),
-                    _buildOverallScore(),
-                    const SizedBox(height: 32),
-                    _buildMetricCards(),
-                    const SizedBox(height: 32),
-                    _buildBarChart(),
-                    const SizedBox(height: 32),
-                    _buildAiAnalysis(),
-                    const SizedBox(height: 32),
-                    _buildMitigations(),
-                    const SizedBox(height: 32),
-                    _buildActionButtons(),
-                    const SizedBox(height: 48),
-                  ],
-                ),
+                child: _isLoading 
+                    ? const Center(child: CircularProgressIndicator(color: _primaryGreen))
+                    : _errorMessage != null 
+                        ? Center(child: Text('Error: $_errorMessage', style: const TextStyle(color: Colors.red)))
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildHeader(),
+                              const SizedBox(height: 40),
+                              _buildOverallScore(),
+                              const SizedBox(height: 32),
+                              _buildMetricCards(),
+                              const SizedBox(height: 32),
+                              _buildBarChart(),
+                              const SizedBox(height: 32),
+                              _buildAiAnalysis(),
+                              const SizedBox(height: 32),
+                              _buildMitigations(),
+                              const SizedBox(height: 32),
+                              _buildActionButtons(),
+                              const SizedBox(height: 48),
+                            ],
+                          ),
               ),
             ),
           ),
@@ -72,11 +113,13 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
   }
 
   Widget _buildHeader() {
+    final filename = _auditData?['filename']?.toString().toUpperCase() ?? 'UNKNOWN_FILE_PROD';
+    final timestamp = _auditData?['timestamp']?.toString() ?? '2023-11-24T14:22:01.044Z';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'AUDIT: FAIRFORGE_MODEL_V2_PROD',
+          'AUDIT: $filename',
           style: GoogleFonts.dmMono(
             color: _secondaryText,
             fontSize: 12,
@@ -84,7 +127,7 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
         ),
         const SizedBox(height: 4),
         Text(
-          'TIMESTAMP: 2023-11-24T14:22:01.044Z',
+          'TIMESTAMP: $timestamp',
           style: GoogleFonts.dmMono(
             color: const Color(0xFF444444),
             fontSize: 10,
@@ -95,6 +138,13 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
   }
 
   Widget _buildOverallScore() {
+    final scoreNum = _auditData?['overall_score'] ?? 0.74;
+    final riskLevel = _auditData?['risk_level']?.toString().toUpperCase() ?? 'MEDIUM';
+    
+    Color riskColor = _primaryGreen;
+    if (riskLevel == 'HIGH') riskColor = const Color(0xFFFFB4AB); // _error design token
+    if (riskLevel == 'MEDIUM') riskColor = _warning;
+
     return _card(
       padding: const EdgeInsets.all(32),
       child: Row(
@@ -110,7 +160,7 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
                 textBaseline: TextBaseline.alphabetic,
                 children: [
                   Text(
-                    '0.74',
+                    scoreNum is double ? scoreNum.toStringAsFixed(2) : scoreNum.toString(),
                     style: GoogleFonts.dmMono(
                       color: _primaryText,
                       fontWeight: FontWeight.w500,
@@ -130,25 +180,36 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
               ),
             ],
           ),
-          _badge('MEDIUM RISK', _warning),
+          _badge('$riskLevel RISK', riskColor),
         ],
       ),
     );
   }
 
   Widget _buildMetricCards() {
+    final metrics = _auditData?['metrics'] ?? {};
+    final dp = metrics['demographic_parity'] ?? {'score': 0.63, 'status': 'FAIL'};
+    final di = metrics['disparate_impact'] ?? {'score': 0.71, 'status': 'WARN'};
+    final eo = metrics['equalized_odds'] ?? {'score': 0.88, 'status': 'PASS'};
+
+    Color getStatusColor(String status) {
+      if (status == 'FAIL') return const Color(0xFFFFB4AB);
+      if (status == 'WARN') return _warning;
+      return _primaryGreen;
+    }
+
     return Row(
       children: [
         Expanded(
-          child: _metricCard('DEMOGRAPHIC PARITY', '0.63', 'FAIL', _error),
+          child: _metricCard('DEMOGRAPHIC PARITY', dp['score']?.toString() ?? '-', dp['status'] ?? '-', getStatusColor(dp['status'].toString())),
         ),
         const SizedBox(width: 24),
         Expanded(
-          child: _metricCard('DISPARATE IMPACT', '0.71', 'WARN', _warning),
+          child: _metricCard('DISPARATE IMPACT', di['score']?.toString() ?? '-', di['status'] ?? '-', getStatusColor(di['status'].toString())),
         ),
         const SizedBox(width: 24),
         Expanded(
-          child: _metricCard('EQUALIZED ODDS', '0.88', 'PASS', _primaryGreen),
+          child: _metricCard('EQUALIZED ODDS', eo['score']?.toString() ?? '-', eo['status'] ?? '-', getStatusColor(eo['status'].toString())),
         ),
       ],
     );
@@ -190,6 +251,27 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
   }
 
   Widget _buildBarChart() {
+    final metrics = _auditData?['metrics'] ?? {};
+    final di = metrics['disparate_impact'] ?? {};
+    final variance = di['variance']?.toString() ?? '32%';
+    
+    final selRates = di['selection_rates'] as Map<String, dynamic>? ?? {
+      'Majority Group': {'rate': 0.78},
+      'Minority Group': {'rate': 0.46},
+    };
+
+    final majKey = selRates.keys.firstWhere((k) => k.toLowerCase().contains('maj'), orElse: () => selRates.keys.first);
+    final minKey = selRates.keys.firstWhere((k) => k != majKey, orElse: () => selRates.keys.last);
+
+    final majRateStr = selRates[majKey]?['rate']?.toString() ?? '0.78';
+    final minRateStr = selRates[minKey]?['rate']?.toString() ?? '0.46';
+    
+    final majRate = double.tryParse(majRateStr) ?? 0.78;
+    final minRate = double.tryParse(minRateStr) ?? 0.46;
+
+    final majPct = '${(majRate * 100).toStringAsFixed(0)}%';
+    final minPct = '${(minRate * 100).toStringAsFixed(0)}%';
+
     return _card(
       padding: const EdgeInsets.all(32),
       child: Column(
@@ -198,7 +280,7 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
           _sectionLabel('SELECTION RATE BY GROUP'),
           const SizedBox(height: 32),
           // Majority Group
-          _barRow('Majority Group', 0.78, '78%', _primaryGreen),
+          _barRow(majKey, majRate, majPct, _primaryGreen),
           const SizedBox(height: 16),
           // Variance indicator
           Row(
@@ -222,7 +304,7 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
                           ),
                         ),
                         Text(
-                          '32% VARIANCE',
+                          '$variance VARIANCE',
                           style: GoogleFonts.dmMono(
                             color: _warning,
                             fontSize: 11,
@@ -239,7 +321,7 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
           ),
           const SizedBox(height: 16),
           // Minority Group
-          _barRow('Minority Group', 0.46, '46%', _error),
+          _barRow(minKey, minRate, minPct, const Color(0xFFFFB4AB)),
         ],
       ),
     );
@@ -513,7 +595,7 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
           height: 48,
           child: ElevatedButton(
             onPressed: _anyMitigationChecked
-                ? () {
+                ? () async {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text(
@@ -524,6 +606,26 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
                         behavior: SnackBarBehavior.floating,
                       ),
                     );
+                    
+                    try {
+                      final appliedList = <String>[];
+                      if (_mitigationChecked[0]) appliedList.add('Reweighting');
+                      if (_mitigationChecked[1]) appliedList.add('Adversarial Debiasing');
+                      if (_mitigationChecked[2]) appliedList.add('Equalized Odds Post-hoc');
+
+                      await ApiService.applyMitigations(
+                        auditId: widget.auditId!,
+                        mitigations: appliedList,
+                      );
+                      
+                      // Refresh the data
+                      _fetchData();
+                    } catch (e) {
+                      if (!mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Failed to apply: $e')),
+                      );
+                    }
                   }
                 : null,
             style: ElevatedButton.styleFrom(
@@ -551,17 +653,20 @@ class _AuditResultsScreenState extends State<AuditResultsScreen> {
           width: double.infinity,
           height: 48,
           child: OutlinedButton.icon(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Exporting report...',
-                    style: GoogleFonts.dmSans(),
-                  ),
-                  backgroundColor: const Color(0xFF1B1C1C),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+            onPressed: () async {
+              if (widget.auditId != null) {
+                final urlString = ApiService.getExportPdfUrl(widget.auditId!);
+                final url = Uri.parse(urlString);
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url);
+                } else {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                       const SnackBar(content: Text('Could not launch backend PDF endpoint.')),
+                    );
+                  }
+                }
+              }
             },
             icon: const Icon(Icons.file_download_outlined, size: 20),
             label: Text(

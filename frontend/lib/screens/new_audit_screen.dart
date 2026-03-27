@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:go_router/go_router.dart';
 import '../widgets/sidebar.dart';
+import '../services/api_service.dart';
 
 class NewAuditScreen extends StatefulWidget {
   const NewAuditScreen({super.key});
@@ -25,6 +26,7 @@ class _NewAuditScreenState extends State<NewAuditScreen> {
 
   String? _fileName;
   String? _fileSize;
+  String? _fileId;
   final Set<String> _selectedAttributes = {'gender', 'race'};
 
   final List<String> _allAttributes = [
@@ -44,33 +46,79 @@ class _NewAuditScreenState extends State<NewAuditScreen> {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['csv', 'json'],
+      withData: true,
     );
     if (result != null) {
+      final file = result.files.single;
+      final bytes = file.bytes;
+      if (bytes == null) return;
+      
       setState(() {
-        _fileName = result.files.single.name;
-        final bytes = result.files.single.size;
-        if (bytes > 1024 * 1024) {
-          _fileSize = '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
-        } else {
-          _fileSize = '${(bytes / 1024).toStringAsFixed(1)} KB';
-        }
+        _fileName = '${file.name} (Uploading...)';
       });
+
+      try {
+        final res = await ApiService.uploadFile(
+          filename: file.name,
+          fileBytes: bytes,
+        );
+        setState(() {
+          _fileId = res['file_id'];
+          _fileName = file.name;
+          final size = file.size;
+          if (size > 1024 * 1024) {
+            _fileSize = '${(size / (1024 * 1024)).toStringAsFixed(1)} MB';
+          } else {
+            _fileSize = '${(size / 1024).toStringAsFixed(1)} KB';
+          }
+          _stepCompleted[0] = true;
+        });
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: $e')),
+        );
+        setState(() {
+          _fileName = null;
+        });
+      }
     }
   }
 
   Future<void> _runAudit() async {
-    if (_isRunning) return;
+    if (_isRunning || _fileId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please upload a dataset first.')),
+      );
+      return;
+    }
     setState(() => _isRunning = true);
 
-    for (int i = 0; i < 4; i++) {
-      await Future.delayed(const Duration(milliseconds: 800));
-      if (!mounted) return;
-      setState(() => _stepCompleted[i] = true);
-    }
+    try {
+      final res = await ApiService.runAudit(
+        fileId: _fileId!,
+        filename: _fileName!,
+        protectedAttributes: _selectedAttributes.toList(),
+        domain: 'Hiring',
+      );
 
-    await Future.delayed(const Duration(milliseconds: 400));
-    if (!mounted) return;
-    context.go('/results');
+      setState(() {
+        _stepCompleted[1] = true;
+        _stepCompleted[2] = true;
+        _stepCompleted[3] = true;
+      });
+
+      await Future.delayed(const Duration(milliseconds: 400));
+      if (!mounted) return;
+      context.go('/results', extra: res['audit_id']);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Audit failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isRunning = false);
+    }
   }
 
   @override

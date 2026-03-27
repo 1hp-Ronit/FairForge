@@ -1,0 +1,21 @@
+id,age,gender,race,education,experience_years,zip_code,score,hired
+1,25,Female,White,Bachelors,2,90001,0.65,0
+2,34,Male,White,Masters,8,90002,0.85,1
+3,28,Non-binary,Hispanic,Bachelors,4,90003,0.72,1
+4,45,Female,Black,PhD,15,90004,0.80,1
+5,22,Male,White,High School,1,90005,0.45,0
+6,30,Male,Asian,Masters,6,90006,0.88,1
+7,27,Female,Asian,Bachelors,3,90007,0.70,1
+8,39,Male,Black,Bachelors,12,90008,0.76,1
+9,41,Female,White,Masters,14,90009,0.82,1
+10,24,Non-binary,White,Bachelors,1,90010,0.55,0
+11,31,Female,Hispanic,Masters,7,90011,0.74,1
+12,29,Male,Black,Bachelors,5,90012,0.68,0
+13,36,Male,White,PhD,10,90013,0.92,1
+14,26,Female,White,Bachelors,3,90014,0.69,0
+15,33,Male,Asian,Bachelors,9,90015,0.81,1
+16,40,Female,Hispanic,High School,18,90016,0.60,0
+17,23,Male,Black,Bachelors,0,90017,0.50,0
+18,37,Non-binary,Asian,Masters,11,90018,0.86,1
+19,28,Female,White,Masters,4,90019,0.78,1
+20,35,Male,Hispanic,Bachelors,8,90020,0.75,1
